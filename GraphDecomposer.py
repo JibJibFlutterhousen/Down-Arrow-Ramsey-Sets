@@ -94,7 +94,7 @@ if __name__ == '__main__':
     Graphs = ["K_4,4", "K_4,5", "K_4,6", "K_5,4", "K_5,5", "K_5,6", "K_6,6", "K_6,7", "K_6,8", "K_7,7", "K_7,8", "K_7,9"]
     logging.info(f"Decomposing the graphs: {Graphs}")
 
-    nWorkers = 4
+    nWorkers = 12
     Workers = []
     Work = slice_per(Graphs, nWorkers)
     for ID in range(nWorkers):
