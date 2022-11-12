@@ -3,7 +3,6 @@ import itertools as it
 import matplotlib.pyplot as plt
 import math
 import scipy
-import pickle
 import os
 import logging
 import multiprocessing
@@ -76,6 +75,7 @@ def _save_graph(Graph, FileName = "Default", Name = None):
     return
 
 def _save_graph_list(GraphList, FileName = "Default", Names = None):
+    GraphList = list(GraphList)
     if Names == None:
         Names = []
         for i in range(len(GraphList)):
@@ -181,31 +181,48 @@ def _get_graph_from_file_name(GraphName):
             n=int(n)
             return nx.path_graph(n)
 
-def _inspect_graphs(Graphs):
-    logging.basicConfig(filename=f"Default_Log.txt", level=logging.INFO, format=f'%(asctime)s [{multiprocessing.current_process().name}, {os.getpid()}] %(message)s')
+def _inspect_graph(GraphName, ID, nWorkers):
     RootDir = os.getcwd()
     os.chdir("Graphs")
-    BaseDir = os.getcwd()
-    for GraphName in Graphs:
-        HostGraph = _get_graph_from_file_name(GraphName)
-        logging.info(f"Determining the down arrow set of {GraphName}")
-        os.chdir(BaseDir)
-        os.chdir(GraphName)
-        with open(f"{GraphName}.UniqueGraphs.pickle", "rb") as InputFile:
-            UniqueSubgraphs = pickle.load(InputFile)
-        with open(f"{GraphName}.UniqueGraphs.pickle", "rb") as InputFile:
-            Intersections = pickle.load(InputFile)
-        for count,Red in enumerate(UniqueSubgraphs):
-            Blue = _Complement(Red, HostGraph)
-            Unions = _Union(Red, Blue)
-            Intersections = _Intersection(Unions, Intersections)
-            _save_coloring([Red, Blue], HostGraph, f"{GraphName}.Coloring.{count}")
-        _save_graph_list(Intersections, f"{GraphName}.Down.Arrow.Set")
-        logging.info(f"Down arrow set of {GraphName} has been determined")
-        with open(f"{GraphName}.Down.Arrow.Set.pickle", "wb") as OutputFile:
-            pickle.dump(Intersections, OutputFile)
+    os.chdir(GraphName)
+    logging.basicConfig(filename=f"{GraphName}_Log.txt", level=logging.INFO, format=f'%(asctime)s [{multiprocessing.current_process().name}, {os.getpid()}] %(message)s')
+    HostGraph = _get_graph_from_file_name(GraphName)
+    UniqueSubgraphs = _work_generator(f"{GraphName}.UniqueGraphs.g6", ID, nWorkers)
+    Intersections = set(nx.read_graph6(f"{GraphName}.UniqueGraphs.g6"))
+    for count,Red in enumerate(UniqueSubgraphs):
+        Blue = _Complement(Red, HostGraph)
+        Unions = _Union(Red, Blue)
+        Intersections = _Intersection(Unions, Intersections)
+    logging.info(f"Worker {ID} is done determinging its part of the down arrow set of {GraphName}")
+    with open(f"{GraphName}.Down.Arrow.Set.Part{ID}.g6", "wb") as OutputFile:
+        for Graph in Intersections:
+            OutputFile.write(nx.to_graph6_bytes(Graph, header=False))
     os.chdir(RootDir)
     return
+
+def _finish_up(GraphName):
+    RootDir = os.getcwd()
+    os.chdir("Graphs")
+    os.chdir(GraphName)
+    logging.basicConfig(filename=f"{GraphName}_Log.txt", level=logging.INFO, format=f'%(asctime)s [{multiprocessing.current_process().name}, {os.getpid()}] %(message)s')
+    logging.info(f"Intersecting the final graphs of the down arrow set of {GraphName} on a single thread...")
+    Started = False
+    for FileName in os.listdir(os.getcwd()):
+        if "Part" in FileName:
+            if not Started:
+                Intersections = nx.read_graph6(FileName)
+                Started = True
+            else:
+                Intersections = _Intersection(nx.read_graph6(FileName), Intersections)
+            os.remove(FileName)
+    logging.info(f"The down arrow set of {GraphName} has been concluded")
+    with open(f"{GraphName}.Down.Arrow.Set.g6", "wb") as OutputFile:
+        for Graph in Intersections:
+            OutputFile.write(nx.to_graph6_bytes(Graph, header=False))
+    _save_graph_list(Intersections, f"{GraphName}.Down.Arrow.Set")
+    os.chdir(RootDir)
+    return
+
 
 def _find_graphs():
     Graphs = []
@@ -217,27 +234,36 @@ def _find_graphs():
         if os.path.isdir(DirName):
             os.chdir(DirName)
             for FileName in os.listdir(os.getcwd()):
-                if ".UniqueGraphs.pickle" in FileName:
+                if ".UniqueGraphs.g6" in FileName:
                     Graphs.append(FileName.split(".",1)[0])
     os.chdir(RootDir)
     return Graphs
 
-def slice_per(source, step):
-    return [source[i::step] for i in range(step)]
+def _work_generator(FileName, WorkerID, nWorkers):
+    # This function takes in a g6 file name in the working directory and parts out the graphs stored within based off of the number of workers tasked to completing the job
+    with open(FileName, "rb") as InputFile:
+        for LineID,Line in enumerate(InputFile.readlines()):
+            if LineID < WorkerID:
+                # This condition makes sure that the worker starts at the right place
+                continue
+            if (LineID % nWorkers) == WorkerID:
+                # This condition gives the workers each their portions of the graphs
+                yield nx.from_graph6_bytes(Line.strip())
 
 if __name__ == '__main__':
     logging.basicConfig(filename=f"Default_Log.txt", level=logging.INFO, format=f'%(asctime)s [{multiprocessing.current_process().name}, {os.getpid()}] %(message)s')
     logging.info("Starting...")
     Graphs = _find_graphs()
     logging.info(f"Inspecting the graphs: {Graphs}")
-
-    nWorkers = 4
+    nWorkers = (multiprocessing.cpu_count()-1)
     Workers = []
-    Work = slice_per(Graphs, nWorkers)
-    for ID in range(nWorkers):
-        logging.info(f"Worker {ID} is being handed the list of graphs: {Work[ID]}")
-        Worker = multiprocessing.Process(target=_inspect_graphs, args=(Work[ID],))
-        Worker.start()
-        Workers.append(Worker)
-    for Worker in Workers:
-        Worker.join()
+
+    for GraphName in Graphs:
+        logging.info(f"  Beginning work on {GraphName}")
+        for ID in range(nWorkers):
+            Worker = multiprocessing.Process(target=_inspect_graph, args=(GraphName, ID, nWorkers))
+            Worker.start()
+            Workers.append(Worker)
+        for Worker in Workers:
+            Worker.join()
+        _finish_up(GraphName)
