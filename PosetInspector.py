@@ -69,11 +69,10 @@ def _inspect_set(Graphs):
         if os.path.exists(f"{GraphName}.Down.Arrow.Poset.pickle"):
             logging.info(f"  The poset structure already exists for {GraphName}...")
             continue
-        if not os.path.exists(f"{GraphName}.Down.Arrow.Set.pickle"):
+        if not os.path.exists(f"{GraphName}.Down.Arrow.Set.g6"):
             logging.info(f"  The down arrow set for {GraphName} doesn't yet exist...")
             continue
-        with open(f"{GraphName}.Down.Arrow.Set.pickle", "rb") as InputFile:
-            DownArrowSet = pickle.load(InputFile)
+        DownArrowSet = list(nx.read_graph6(f"{GraphName}.Down.Arrow.Set.g6"))
         Poset = nx.empty_graph(create_using=nx.DiGraph)
         for SourceID, SourceGraph in enumerate(DownArrowSet):
             for TargetID, TargetGraph in enumerate(DownArrowSet):
@@ -100,7 +99,7 @@ def _find_graphs():
         if os.path.isdir(DirName):
             os.chdir(DirName)
             for FileName in os.listdir(os.getcwd()):
-                if ".UniqueGraphs.pickle" in FileName:
+                if ".UniqueGraphs.g6" in FileName:
                     Graphs.append(FileName.split(".",1)[0])
     os.chdir(RootDir)
     return Graphs
@@ -131,7 +130,7 @@ if __name__ == '__main__':
     Graphs = _find_graphs()
     logging.info(f"Inspecting the graphs: {Graphs}")
 
-    nWorkers = 12
+    nWorkers = (multiprocessing.cpu_count()-1)
     Workers = []
     Work = slice_per(Graphs, nWorkers)
     for ID in range(nWorkers):
