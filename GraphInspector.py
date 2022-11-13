@@ -186,6 +186,10 @@ def _inspect_graph(GraphName, ID, nWorkers):
     os.chdir("Graphs")
     os.chdir(GraphName)
     logging.basicConfig(filename=f"{GraphName}_Log.txt", level=logging.INFO, format=f'%(asctime)s [{multiprocessing.current_process().name}, {os.getpid()}] %(message)s')
+    if os.path.exists(f"{GraphName}.Down.Arrow.Set.g6"):
+        logging.info(f"{GraphName} has already been inspected")
+        os.chdir(RootDir)
+        return
     HostGraph = _get_graph_from_file_name(GraphName)
     UniqueSubgraphs = _work_generator(f"{GraphName}.UniqueGraphs.g6", ID, nWorkers)
     Intersections = set(nx.read_graph6(f"{GraphName}.UniqueGraphs.g6"))
@@ -205,13 +209,16 @@ def _finish_up(GraphName):
     os.chdir("Graphs")
     os.chdir(GraphName)
     logging.basicConfig(filename=f"{GraphName}_Log.txt", level=logging.INFO, format=f'%(asctime)s [{multiprocessing.current_process().name}, {os.getpid()}] %(message)s')
+    if os.path.exists(f"{GraphName}.Down.Arrow.Set.g6"):
+        logging.info(f"{GraphName} has already been inspected")
+        os.chdir(RootDir)
+        return
     logging.info(f"Intersecting the final graphs of the down arrow set of {GraphName} on a single thread...")
-    Started = False
+    Intersections = nx.read_graph6(f"{GraphName}.Down.Arrow.Set.Part1.g6")
     for FileName in os.listdir(os.getcwd()):
         if "Part" in FileName:
-            if not Started:
-                Intersections = nx.read_graph6(FileName)
-                Started = True
+            if "Part1.g6" in FileName:
+                continue
             else:
                 Intersections = _Intersection(nx.read_graph6(FileName), Intersections)
             os.remove(FileName)
