@@ -182,20 +182,26 @@ def _get_graph_from_file_name(GraphName):
             return nx.path_graph(n)
 
 def _inspect_graph(GraphName, ID, nWorkers):
+    logging.basicConfig(filename=f"Default_Log.txt", level=logging.INFO, format=f'%(asctime)s [{multiprocessing.current_process().name}, {os.getpid()}]   %(message)s')
     RootDir = os.getcwd()
     os.chdir("Graphs")
     os.chdir(GraphName)
-    logging.basicConfig(filename=f"{GraphName}_Log.txt", level=logging.INFO, format=f'%(asctime)s [{multiprocessing.current_process().name}, {os.getpid()}] %(message)s')
     if os.path.exists(f"{GraphName}.Down.Arrow.Set.g6"):
         logging.info(f"{GraphName} has already been inspected")
         os.chdir(RootDir)
         return
     HostGraph = _get_graph_from_file_name(GraphName)
     UniqueSubgraphs = _work_generator(f"{GraphName}.UniqueGraphs.g6", ID, nWorkers)
-    Intersections = set(nx.read_graph6(f"{GraphName}.UniqueGraphs.g6"))
+    Initialized = False
     for count,Red in enumerate(UniqueSubgraphs):
+        if (count % 10) == 0:
+            logging.info(f"Worker {ID} has gone through {count} colorings")
         Blue = _Complement(Red, HostGraph)
         Unions = _Union(Red, Blue)
+        if not Initialized:
+            Intersections = Unions
+            Initialized = True
+            continue
         Intersections = _Intersection(Unions, Intersections)
     logging.info(f"Worker {ID} is done determinging its part of the down arrow set of {GraphName}")
     with open(f"{GraphName}.Down.Arrow.Set.Part{ID}.g6", "wb") as OutputFile:
@@ -205,10 +211,10 @@ def _inspect_graph(GraphName, ID, nWorkers):
     return
 
 def _finish_up(GraphName):
+    logging.basicConfig(filename=f"Default_Log.txt", level=logging.INFO, format=f'%(asctime)s [{multiprocessing.current_process().name}, {os.getpid()}] %(message)s')
     RootDir = os.getcwd()
     os.chdir("Graphs")
     os.chdir(GraphName)
-    logging.basicConfig(filename=f"{GraphName}_Log.txt", level=logging.INFO, format=f'%(asctime)s [{multiprocessing.current_process().name}, {os.getpid()}] %(message)s')
     if os.path.exists(f"{GraphName}.Down.Arrow.Set.g6"):
         logging.info(f"{GraphName} has already been inspected")
         os.chdir(RootDir)
@@ -267,6 +273,8 @@ if __name__ == '__main__':
 
     for GraphName in Graphs:
         logging.info(f"  Beginning work on {GraphName}")
+        thing = f"Graphs/{GraphName}/{GraphName}.UniqueGraphs.g6"
+        logging.info(f"  Each worker will get approximately {len(list(_work_generator (thing, 0, nWorkers)))} colorings to look at")
         for ID in range(nWorkers):
             Worker = multiprocessing.Process(target=_inspect_graph, args=(GraphName, ID, nWorkers))
             Worker.start()
