@@ -132,7 +132,7 @@ def _get_part_reds(GraphName, ID, nWorkers, nJobs):
     UniqueReds = []
     PercentDone = 0
     for counter,Red in enumerate(_work_generator(_red_coloring_generator(HostGraph), ID, nWorkers)):
-        if (counter % math.floor(nJobs/10)) == 0:
+        if (counter % max(math.floor(nJobs/10),1)) == 0:
             logging.info(f"Worker {ID} is about {PercentDone}% done.")
             PercentDone += 10
         for UniqueRed in UniqueReds:
@@ -143,7 +143,7 @@ def _get_part_reds(GraphName, ID, nWorkers, nJobs):
             UniqueReds.append(Red)
     with open(f"{GraphName}.Reds.Part.{ID}.g6", "wb") as OutputFile:
         for Red in UniqueReds:
-            OutputFile.write(nx.to_graph6_bytes(Red))
+            OutputFile.write(nx.to_graph6_bytes(Red, header=False))
     logging.info(f"Worker {ID} is done making the red subgraphs")
     return
 
@@ -155,13 +155,18 @@ def _finish_reds(GraphName):
     UniqueReds = None
     for FileName in os.listdir():
         if ".Reds.Part." in FileName:
+            logging.info(f"Unpacking {FileName}")
             if UniqueReds == None:
                 UniqueReds = list(nx.read_graph6(FileName))
             else:
-                for Red in nx.read_graph6(FileName):
+                InputList = nx.read_graph6(FileName)
+                if type(InputList) == type(nx.null_graph()):
+                    InputList = (InputList,)
+                for Red in InputList:
                     for UniqueRed in UniqueReds:
-                        if nx.is_isomorphic(Red, UniqueRed):
-                            break
+                        if type(Red) == type(UniqueRed):
+                            if nx.is_isomorphic(Red, UniqueRed):
+                                break
                     else:
                         # If the previous for loop did not break, then...
                         UniqueReds.append(Red)
@@ -365,7 +370,8 @@ def _make_ideals(GraphName):
     return
 
 if __name__ == '__main__':
-    Graphs = ["K_6"]
+    Graphs = ["K_1,5"]
+    # Graphs = ["K_4","K_5","K_6","K_1,5","K_1,6","K_1,7","K_1,8","K_2,5","K_2,6","K_2,7","K_2,8","K_3,3","K_3,4","K_3,5","K_3,6","K_3,7","K_3,8"]
     for GraphName in Graphs:
         _build_directory(GraphName)
         _get_reds(GraphName)
