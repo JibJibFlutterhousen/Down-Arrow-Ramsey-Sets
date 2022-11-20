@@ -318,9 +318,10 @@ def _get_part_down_set(GraphName, ID, nWorkers, nJobs):
             ColoringUnion = _Union(_subgraph_set_generator(Red, GraphName), _subgraph_set_generator(_Complement(Red,HostGraph), GraphName))
             DownArrowSet = _Intersection(ColoringUnion, DownArrowSet)
     logging.info(f"Worker {ID} is done determing its part of the down arrow set of {GraphName}")
-    with open(f"{GraphName}.Down.Arrow.Set.Part.{ID}.g6", "wb") as OutputFile:
-        for Graph in DownArrowSet:
-            OutputFile.write(nx.to_graph6_bytes(Graph, header=False))
+    if not DownArrowSet is None:
+        with open(f"{GraphName}.Down.Arrow.Set.Part.{ID}.g6", "wb") as OutputFile:
+            for Graph in DownArrowSet:
+                OutputFile.write(nx.to_graph6_bytes(Graph, header=False))
     return
 
 def _make_down_set(GraphName):
@@ -370,8 +371,8 @@ def _make_ideals(GraphName):
     return
 
 if __name__ == '__main__':
-    Graphs = ["K_1,5"]
-    # Graphs = ["K_4","K_5","K_6","K_1,5","K_1,6","K_1,7","K_1,8","K_2,5","K_2,6","K_2,7","K_2,8","K_3,3","K_3,4","K_3,5","K_3,6","K_3,7","K_3,8"]
+    # Graphs = ["K_1,5"]
+    Graphs = ["K_4","K_5","K_6","K_1,5","K_1,6","K_1,7","K_1,8","K_2,5","K_2,6","K_2,7","K_2,8","K_3,3","K_3,4","K_3,5","K_3,6","K_3,7","K_3,8"]
     for GraphName in Graphs:
         _build_directory(GraphName)
         _get_reds(GraphName)
