@@ -130,11 +130,9 @@ def _get_part_reds(GraphName, ID, nWorkers, nJobs):
     _get_to_folder(GraphName)
     HostGraph = _get_graph_from_name(GraphName)
     UniqueReds = []
-    PercentDone = 0
     for counter,Red in enumerate(_work_generator(_red_coloring_generator(HostGraph), ID, nWorkers)):
         if (counter % max(math.floor(nJobs/10),1)) == 0:
-            logging.info(f"Worker {ID} is about {PercentDone}% done.")
-            PercentDone += 10
+            logging.info(f"Worker {ID} is about {round((counter/nJobs)*100)}% done.")
         for UniqueRed in UniqueReds:
             if nx.is_isomorphic(Red, UniqueRed):
                 break
@@ -176,7 +174,7 @@ def _finish_reds(GraphName):
         for Red in UniqueReds:
             OutputFile.write(nx.to_graph6_bytes(Red, header=False))
     logging.info(f"Exporting the unique red subgraphs")
-    _save_graph_list(UniqueReds, f"{GraphName}.Reds")
+    # _save_graph_list(UniqueReds, f"{GraphName}.Reds")
     os.chdir(RootDir)
     return
 
@@ -206,6 +204,7 @@ def _finish_subgraphs(GraphName):
     UniqueSubgraphs = None
     for FileName in os.listdir():
         if ".Unique.Subgraphs.Part." in FileName:
+            logging.info(f"Unpacking {FileName}")
             if UniqueSubgraphs == None:
                 UniqueSubgraphs = list(nx.read_graph6(FileName))
             else:
@@ -221,7 +220,8 @@ def _finish_subgraphs(GraphName):
     with open(f"{GraphName}.Unique.Subgraphs.g6", "wb") as OutputFile:
         for Red in UniqueSubgraphs:
             OutputFile.write(nx.to_graph6_bytes(Red, header=False))
-    _save_graph_list(UniqueSubgraphs, f"{GraphName}.Unique.Subgraphs")
+    logging.info(f"Exporting the subgraphs of {GraphName}")
+    # _save_graph_list(UniqueSubgraphs, f"{GraphName}.Unique.Subgraphs")
     return
 
 def _get_part_subgraphs(GraphName, ID, nWorkers, nJobs):
@@ -230,11 +230,9 @@ def _get_part_subgraphs(GraphName, ID, nWorkers, nJobs):
     _get_to_folder(GraphName)
     HostGraph = _get_graph_from_name(GraphName)
     UniqueSubgraphs = []
-    PercentDone = 0
     for counter,Red in enumerate(_work_generator(nx.read_graph6(f"{GraphName}.Reds.g6"),ID,nWorkers)):
         if (counter % max(math.floor(nJobs/10),1)) == 0:
-            logging.info(f"Worker {ID} is about {PercentDone}% done.")
-            PercentDone += 10
+            logging.info(f"Worker {ID} is about {round((counter/nJobs)*100)}% done.")
         UniqueSubgraphs.append(Red.copy())
         UniqueSubgraphs.append(_Complement(Red, HostGraph).copy())
     with open(f"{GraphName}.Unique.Subgraphs.Part.{ID}.g6", "wb") as OutputFile:
@@ -264,20 +262,57 @@ def _make_subgraphs(GraphName):
     os.chdir(RootDir)
     return
 
+def _finish_poset(GraphName):
+    logging.basicConfig(filename=f"Default_Log.txt", level=logging.INFO, format=f'%(asctime)s [{multiprocessing.current_process().name}, {os.getpid()}] %(message)s')
+    logging.info(f"Finishing up the subgraphs of {GraphName} by zipping together the seperate g6 files where needed...")
+    _get_to_folder(GraphName)
+    Poset = None
+    for FileName in os.listdir():
+        if ".Poset.Part." in FileName:
+            logging.info(f"Unpacking {FileName}")
+            if Poset == None:
+                Poset = nx.read_gml(FileName)
+            else:
+                for Source,Target in nx.read_gml(FileName).edges():
+                    Poset.add_edge(Source, Target)
+            logging.info(f"Done with {FileName}")
+            os.remove(FileName)
+    nx.write_gml(Poset,f"{GraphName}.Poset.gml")
+    return
+
+def _make_poset_parts(GraphName, ID, nWorkers, nJobs):
+    logging.basicConfig(filename=f"Default_Log.txt", level=logging.INFO, format=f'%(asctime)s [{multiprocessing.current_process().name}, {os.getpid()}] %(message)s')
+    logging.info(f"Worker {ID} is starting poset decomposition...")
+    _get_to_folder(GraphName)
+    Poset = nx.empty_graph(create_using=nx.DiGraph)
+    for counter,Source in enumerate(_work_generator(nx.read_graph6(f"{GraphName}.Unique.Subgraphs.g6"),ID,nWorkers)):
+        if (counter % max(math.floor(nJobs/10),1)) == 0:
+            logging.info(f"Worker {ID} is about {round((counter/nJobs)*100)}% done.")
+        for Target in nx.read_graph6(f"{GraphName}.Unique.Subgraphs.g6"):
+            if nx.algorithms.isomorphism.GraphMatcher(Target,Source).subgraph_is_monomorphic():
+                Poset.add_edge(f"{nx.to_graph6_bytes(Source, header=False).strip()}", f"{nx.to_graph6_bytes(Target, header=False).strip()}")
+    nx.write_gml(Poset, f"{GraphName}.Poset.Part.{ID}.gml")
+    logging.info(f"Worker {ID} is done decomposing its part of the poset")
+    return
+
 def _make_poset(GraphName):
     RootDir = os.getcwd()
+    nWorkers = max(multiprocessing.cpu_count()-1,1)
+    Workers = []
     logging.basicConfig(filename=f"Default_Log.txt", level=logging.INFO, format=f'%(asctime)s [{multiprocessing.current_process().name}, {os.getpid()}] %(message)s')
     logging.info(f"Building the poset of {GraphName}")
     if os.path.exists(f"Graphs/{GraphName}/{GraphName}.Poset.gml"):
         logging.info(f"{GraphName}\'s poset already exists...")
         return
-    _get_to_folder(GraphName)
-    Poset = nx.empty_graph(create_using=nx.DiGraph)
-    for SourceID,Source in enumerate(nx.read_graph6(f"{GraphName}.Unique.Subgraphs.g6")):
-        for TargetID,Target in enumerate(nx.read_graph6(f"{GraphName}.Unique.Subgraphs.g6")):
-            if nx.algorithms.isomorphism.GraphMatcher(Target,Source).subgraph_is_monomorphic():
-                Poset.add_edge(f"{nx.to_graph6_bytes(Source, header=False).strip()}", f"{nx.to_graph6_bytes(Target, header=False).strip()}")
-    nx.write_gml(Poset,f"{GraphName}.Poset.gml")
+    nJobs = sum(1 for _ in _work_generator(nx.read_graph6(f"Graphs/{GraphName}/{GraphName}.Unique.Subgraphs.g6"),0,nWorkers))
+    logging.info(f"Each worker will get approximately {nJobs} jobs...")
+    for ID in range(nWorkers):
+        Worker = Worker = multiprocessing.Process(target=_make_poset_parts, args=(GraphName, ID, nWorkers, nJobs))
+        Worker.start()
+        Workers.append(Worker)
+    for Worker in Workers:
+        Worker.join()
+    _finish_poset(GraphName)
     os.chdir(RootDir)
     return
 
@@ -288,6 +323,7 @@ def _finish_down_set(GraphName):
     DownArrowSet = None
     for FileName in os.listdir():
         if ".Down.Arrow.Set.Part." in FileName:
+            logging.info(f"Unpacking {FileName}")
             if DownArrowSet == None:
                 DownArrowSet = list(nx.read_graph6(FileName))
             else:
@@ -307,18 +343,17 @@ def _get_part_down_set(GraphName, ID, nWorkers, nJobs):
     _get_to_folder(GraphName)
     HostGraph = _get_graph_from_name(GraphName)
     DownArrowSet = None
-    PercentDone = 0
     for counter,Red in enumerate(_work_generator(nx.read_graph6(f"{GraphName}.Reds.g6"),ID,nWorkers)):
         if counter == 0:
             DownArrowSet = _Union(_subgraph_set_generator(Red, GraphName), _subgraph_set_generator(_Complement(Red,HostGraph), GraphName))
         else:
             if (counter % max(math.floor(nJobs/10),1)) == 0:
-                logging.info(f"Worker {ID} is about {PercentDone}% done.")
-                PercentDone += 10
+                logging.info(f"Worker {ID} is about {round((counter/nJobs)*100)}% done.")
             ColoringUnion = _Union(_subgraph_set_generator(Red, GraphName), _subgraph_set_generator(_Complement(Red,HostGraph), GraphName))
             DownArrowSet = _Intersection(ColoringUnion, DownArrowSet)
     logging.info(f"Worker {ID} is done determing its part of the down arrow set of {GraphName}")
     if not DownArrowSet is None:
+        logging.info(f"Exporing the down arrow set part {ID}")
         with open(f"{GraphName}.Down.Arrow.Set.Part.{ID}.g6", "wb") as OutputFile:
             for Graph in DownArrowSet:
                 OutputFile.write(nx.to_graph6_bytes(Graph, header=False))
@@ -326,7 +361,7 @@ def _get_part_down_set(GraphName, ID, nWorkers, nJobs):
 
 def _make_down_set(GraphName):
     RootDir = os.getcwd()
-    nWorkers = max(multiprocessing.cpu_count()-2,1)
+    nWorkers = max(multiprocessing.cpu_count()-1,1)
     Workers = []
     logging.basicConfig(filename=f"Default_Log.txt", level=logging.INFO, format=f'%(asctime)s [{multiprocessing.current_process().name}, {os.getpid()}] %(message)s')
     logging.info(f"Extrapolating from the red subgraphs of {GraphName} with {nWorkers} workers")
@@ -371,7 +406,7 @@ def _make_ideals(GraphName):
     return
 
 if __name__ == '__main__':
-    # Graphs = ["K_1,5"]
+    # Graphs = ["K_3,4"]
     Graphs = ["K_4","K_5","K_6","K_1,5","K_1,6","K_1,7","K_1,8","K_2,5","K_2,6","K_2,7","K_2,8","K_3,3","K_3,4","K_3,5","K_3,6","K_3,7","K_3,8"]
     for GraphName in Graphs:
         _build_directory(GraphName)
