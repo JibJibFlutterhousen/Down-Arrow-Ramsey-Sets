@@ -206,9 +206,14 @@ def _finish_subgraphs(GraphName):
         if ".Unique.Subgraphs.Part." in FileName:
             logging.info(f"Unpacking {FileName}")
             if UniqueSubgraphs == None:
-                UniqueSubgraphs = list(nx.read_graph6(FileName))
+                UniqueSubgraphs = nx.read_graph6(FileName)
+                if type(UniqueSubgraphs) == type(nx.null_graph()):
+                    UniqueSubgraphs = (UniqueSubgraphs,)
             else:
-                for Red in nx.read_graph6(FileName):
+                InputList = nx.read_graph6(FileName)
+                if type(InputList) == type(nx.null_graph()):
+                    InputList = (InputList,)
+                for Red in InputList:
                     for UniqueSubgraph in UniqueSubgraphs:
                         if nx.is_isomorphic(Red, UniqueSubgraph):
                             break
@@ -220,6 +225,8 @@ def _finish_subgraphs(GraphName):
     with open(f"{GraphName}.Unique.Subgraphs.g6", "wb") as OutputFile:
         for Red in UniqueSubgraphs:
             OutputFile.write(nx.to_graph6_bytes(Red, header=False))
+        OutputFile.write(nx.to_graph6_bytes(nx.empty_graph(), header=False))
+        OutputFile.write(nx.to_graph6_bytes(nx.complete_graph(1), header=False))
     logging.info(f"Exporting the subgraphs of {GraphName}")
     # _save_graph_list(UniqueSubgraphs, f"{GraphName}.Unique.Subgraphs")
     return
@@ -231,6 +238,11 @@ def _get_part_subgraphs(GraphName, ID, nWorkers, nJobs):
     HostGraph = _get_graph_from_name(GraphName)
     UniqueSubgraphs = []
     for counter,Red in enumerate(_work_generator(nx.read_graph6(f"{GraphName}.Reds.g6"),ID,nWorkers)):
+        if type(Red) == type(counter):
+            OnlyGraph = nx.read_graph6(f"{GraphName}.Reds.g6")
+            UniqueSubgraphs.append(OnlyGraph.copy())
+            UniqueSubgraphs.append(_Complement(OnlyGraph, HostGraph).copy())
+            break
         if (counter % max(math.floor(nJobs/10),1)) == 0:
             logging.info(f"Worker {ID} is about {round((counter/nJobs)*100)}% done.")
         UniqueSubgraphs.append(Red.copy())
@@ -344,6 +356,10 @@ def _get_part_down_set(GraphName, ID, nWorkers, nJobs):
     HostGraph = _get_graph_from_name(GraphName)
     DownArrowSet = None
     for counter,Red in enumerate(_work_generator(nx.read_graph6(f"{GraphName}.Reds.g6"),ID,nWorkers)):
+        if type(Red) == type(counter):
+            OnlyGraph = nx.read_graph6(f"{GraphName}.Reds.g6")
+            DownArrowSet = _Union(_subgraph_set_generator(OnlyGraph, GraphName), _subgraph_set_generator(_Complement(OnlyGraph,HostGraph), GraphName))
+            break
         if counter == 0:
             DownArrowSet = _Union(_subgraph_set_generator(Red, GraphName), _subgraph_set_generator(_Complement(Red,HostGraph), GraphName))
         else:
@@ -407,8 +423,19 @@ def _make_ideals(GraphName):
 
 if __name__ == '__main__':
     # Graphs = ["K_3,4"]
-    Graphs = ["K_4","K_5","K_6","K_1,5","K_1,6","K_1,7","K_1,8","K_2,5","K_2,6","K_2,7","K_2,8","K_3,3","K_3,4","K_3,5","K_3,6","K_3,7","K_3,8"]
+
+    GraphName = "K_1,1"
+
+    # _build_directory(GraphName)
+    # _get_reds(GraphName)
+    # _make_subgraphs(GraphName)
+    # _make_poset(GraphName)
+    # _make_down_set(GraphName)
+    # # _make_ideals(GraphName)
+
+    Graphs = ["K_1,1", "K_1,2", "K_1,3", "K_2", "K_3"]
     for GraphName in Graphs:
+        print(GraphName)
         _build_directory(GraphName)
         _get_reds(GraphName)
         _make_subgraphs(GraphName)
