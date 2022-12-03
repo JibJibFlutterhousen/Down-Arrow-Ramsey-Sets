@@ -169,7 +169,7 @@ def _finish_reds(GraphName):
                         # If the previous for loop did not break, then...
                         UniqueReds.append(Red)
             logging.info(f"Done with {FileName}")
-            os.remove(FileName)
+            # os.remove(FileName)
     with open(f"{GraphName}.Reds.g6", "wb") as OutputFile:
         for Red in UniqueReds:
             OutputFile.write(nx.to_graph6_bytes(Red, header=False))
@@ -221,7 +221,7 @@ def _finish_subgraphs(GraphName):
                         # If the previous for loop did not break, then...
                         UniqueSubgraphs.append(Red)
             logging.info(f"Done with {FileName}")
-            os.remove(FileName)
+            # os.remove(FileName)
     with open(f"{GraphName}.Unique.Subgraphs.g6", "wb") as OutputFile:
         for Red in UniqueSubgraphs:
             OutputFile.write(nx.to_graph6_bytes(Red, header=False))
@@ -243,8 +243,6 @@ def _get_part_subgraphs(GraphName, ID, nWorkers, nJobs):
             UniqueSubgraphs.append(OnlyGraph.copy())
             UniqueSubgraphs.append(_Complement(OnlyGraph, HostGraph).copy())
             break
-        if (counter % max(math.floor(nJobs/10),1)) == 0:
-            logging.info(f"Worker {ID} is about {round((counter/nJobs)*100)}% done.")
         UniqueSubgraphs.append(Red.copy())
         UniqueSubgraphs.append(_Complement(Red, HostGraph).copy())
     with open(f"{GraphName}.Unique.Subgraphs.Part.{ID}.g6", "wb") as OutputFile:
@@ -288,7 +286,7 @@ def _finish_poset(GraphName):
                 for Source,Target in nx.read_gml(FileName).edges():
                     Poset.add_edge(Source, Target)
             logging.info(f"Done with {FileName}")
-            os.remove(FileName)
+            # os.remove(FileName)
     nx.write_gml(Poset,f"{GraphName}.Poset.gml")
     return
 
@@ -341,7 +339,7 @@ def _finish_down_set(GraphName):
             else:
                 DownArrowSet = _Intersection(DownArrowSet, nx.read_graph6(FileName))
             logging.info(f"Done with {FileName}")
-            os.remove(FileName)
+            # os.remove(FileName)
     with open(f"{GraphName}.Down.Arrow.Set.g6", "wb") as OutputFile:
         for Graph in DownArrowSet:
             OutputFile.write(nx.to_graph6_bytes(Graph, header=False))
@@ -363,16 +361,14 @@ def _get_part_down_set(GraphName, ID, nWorkers, nJobs):
         if counter == 0:
             DownArrowSet = _Union(_subgraph_set_generator(Red, GraphName), _subgraph_set_generator(_Complement(Red,HostGraph), GraphName))
         else:
-            if (counter % max(math.floor(nJobs/10),1)) == 0:
-                logging.info(f"Worker {ID} is about {round((counter/nJobs)*100)}% done.")
             ColoringUnion = _Union(_subgraph_set_generator(Red, GraphName), _subgraph_set_generator(_Complement(Red,HostGraph), GraphName))
             DownArrowSet = _Intersection(ColoringUnion, DownArrowSet)
-    logging.info(f"Worker {ID} is done determing its part of the down arrow set of {GraphName}")
     if not DownArrowSet is None:
         logging.info(f"Exporing the down arrow set part {ID}")
         with open(f"{GraphName}.Down.Arrow.Set.Part.{ID}.g6", "wb") as OutputFile:
             for Graph in DownArrowSet:
                 OutputFile.write(nx.to_graph6_bytes(Graph, header=False))
+    logging.info(f"Worker {ID} is done determing its part of the down arrow set of {GraphName}")
     return
 
 def _make_down_set(GraphName):
@@ -422,20 +418,9 @@ def _make_ideals(GraphName):
     return
 
 if __name__ == '__main__':
-    # Graphs = ["K_3,4"]
-
-    GraphName = "K_1,1"
-
-    # _build_directory(GraphName)
-    # _get_reds(GraphName)
-    # _make_subgraphs(GraphName)
-    # _make_poset(GraphName)
-    # _make_down_set(GraphName)
-    # # _make_ideals(GraphName)
-
-    Graphs = ["K_1,1", "K_1,2", "K_1,3", "K_2", "K_3"]
+    Graphs = ["K_4,6"]
+    # Graphs = ["K_7","K_8","K_9","K_4,4","K_4,5","K_4,6","K_4,7","K_4,8","K_5,5","K_5,6","K_5,7","K_5,8","K_6,6","K_6,7","K_6,8","K_7,7","K_7,8","K_8,8"]
     for GraphName in Graphs:
-        print(GraphName)
         _build_directory(GraphName)
         _get_reds(GraphName)
         _make_subgraphs(GraphName)
