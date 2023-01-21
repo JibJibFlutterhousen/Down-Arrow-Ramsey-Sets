@@ -65,17 +65,16 @@ def _get_graph_from_name(Graph_name):
             return nx.path_graph(n)
 
 def _make_graph_directory(Graph_name):
-    folders_to_make = ["Graphs", f"Graphs/{Graph_name}", f"Graphs/{Graph_name}/Parts", f"Graphs/{Graph_name}/Parts/DownArrowSet", f"Graphs/{Graph_name}/Parts/Poset", f"Graphs/{Graph_name}/Parts/Poset", f"Graphs/{Graph_name}/Parts/Subgraphs"]
+    folders_to_make = ["Graphs", f"Graphs/{Graph_name}", f"Graphs/{Graph_name}/Parts", f"Graphs/{Graph_name}/Parts/DownArrowSet", f"Graphs/{Graph_name}/Parts/Poset", f"Graphs/{Graph_name}/Parts/Poset", f"Graphs/{Graph_name}/Parts/Subgraphs", f"Graphs/{Graph_name}/Parts/UniqueSubgraphs"]
     [os.mkdir(folder_name) for folder_name in folders_to_make if not os.path.exists(folder_name)]
     return
 
 def _find_in_poset(Target_graph6_string, Graph_name):
-    poset_graph = nx.read_gml(f"Graphs/{Graph_name}/{Graph_name}.Poset.gml")
-    if Target_graph6_string in list(poset_graph.nodes()):
+    if Target_graph6_string in list(nx.read_gml(f"Graphs/{Graph_name}/{Graph_name}.Poset.gml").nodes()):
         return Target_graph6_string
     else:
         looking_for = nx.from_graph6_bytes(Target_graph6_string)
-        for graph6_string in poset_graph.nodes():
+        for graph6_string in list(nx.read_gml(f"Graphs/{Graph_name}/{Graph_name}.Poset.gml").nodes()):
             graph_in_poset = nx.from_graph6_bytes(bytes(graph6_string[2:len(graph6_string)-1], "utf-8").replace(b"\\\\",b"\\"))
             if nx.is_isomorphic(looking_for, graph_in_poset):
                 return(graph6_string)
@@ -106,10 +105,18 @@ def _subgraph_generator(Graph):
 def _unique_subgraph_generator(Graph):
     unique_subgraphs = []
     for subgraph in _subgraph_generator(Graph):
-        unique = True
         for unique_subgraph in unique_subgraphs:
             if nx.is_isomorphic(subgraph, unique_subgraph):
-                unique = True
+                break
+        else:
+            unique_subgraphs.append(subgraph)
+            yield subgraph
+
+def _g6_filter(path):
+    unique_subgraphs = []
+    for subgraph in nx.read_graph6(path):
+        for unique_subgraph in unique_subgraphs:
+            if nx.is_isomorphic(subgraph, unique_subgraph):
                 break
         else:
             unique_subgraphs.append(subgraph)
@@ -119,7 +126,6 @@ def _poset_iterator(Graph_name):
     poset_graph = nx.read_gml(f"Graphs/{Graph_name}/{Graph_name}.Poset.gml")
     for graph6_string in poset_graph.nodes():
         yield graph6_string
-        # yield nx.from_graph6_bytes(bytes(graph6_string[2:len(graph6_string)-1], "utf-8").replace(b"\\\\",b"\\"))
 
 def _split_work(Generator, ID, Num_workers):
     for job_number,job in enumerate(Generator):
@@ -138,6 +144,13 @@ def _make_subgraphs(Graph_name):
         workers.append(job)
     for worker in workers:
         worker.join()
+    workers = []
+    for id in range(num_workers):
+        job = multiprocessing.Process(target=_filter_subgraphs, args=(Graph_name,id, num_workers))
+        job.start()
+        workers.append(job)
+    for worker in workers:
+        worker.join()
     _finish_subgraphs(Graph_name)
     return
 
@@ -147,16 +160,23 @@ def _make_part_subgraphs(Graph_name, ID, Num_workers):
         [output_file.write(nx.to_graph6_bytes(subgraph, header=False)) for subgraph in _split_work(_subgraph_generator(graph), ID, Num_workers)]
     return
 
+def _filter_subgraphs(Graph_name, ID, Num_workers):
+    with open(f"Graphs/{Graph_name}/Parts/UniqueSubgraphs/{Graph_name}.UniqueSubgraphs.Part.{ID}.g6", "wb") as output_file:
+        [output_file.write(nx.to_graph6_bytes(subgraph, header=False)) for subgraph in _g6_filter(f"Graphs/{Graph_name}/Parts/Subgraphs/{Graph_name}.Subgraphs.Part.{ID}.g6")]
+    return
+
 def _finish_subgraphs(Graph_name):
     unique_subgraphs = []
-    for file in os.listdir(f"Graphs/{Graph_name}/Parts/Subgraphs"):
+    for file in os.listdir(f"Graphs/{Graph_name}/Parts/UniqueSubgraphs"):
         if file.endswith(".g6"):
-            for subgraph in nx.read_graph6(f"Graphs/{Graph_name}/Parts/Subgraphs/{file}"):
+            for subgraph in nx.read_graph6(f"Graphs/{Graph_name}/Parts/UniqueSubgraphs/{file}"):
                 for unique_subgraph in unique_subgraphs:
                     if nx.is_isomorphic(subgraph, unique_subgraph):
                         break
                 else:
                     unique_subgraphs.append(subgraph)
+    with open(f"Graphs/{Graph_name}/{Graph_name}.Unique.Subgraphs.g6", "wb") as output_file:
+        pass
     with open(f"Graphs/{Graph_name}/{Graph_name}.Unique.Subgraphs.g6", "wb") as output_file:
         [output_file.write(nx.to_graph6_bytes(subgraph, header=False)) for subgraph in unique_subgraphs]
     return
@@ -193,8 +213,13 @@ def _finish_poset(Graph_name):
     return
 
 def make_down_arrow_set(Graph_name):
-    if not os.path.exists(f"Graphs/{Graph_name}/Poset.gml"):
+    graph = _get_graph_from_name(Graph_name)
+    if graph.size() < 1:
+        return
+    if not os.path.exists(f"Graphs/{Graph_name}/{Graph_name}.Poset.gml"):
         _make_poset(Graph_name)
+    if os.path.exists(f"Graphs/{Graph_name}/{Graph_name}.DownArrowIdeals.png"):
+        retun
     num_workers = max(1, multiprocessing.cpu_count()-1)
     workers = []
     for id in range(num_workers):
@@ -221,28 +246,28 @@ def _make_part_down_arrow_set(Graph_name, ID, Num_workers):
             down_arrow_set = _intersection(down_arrow_set, coloring_union)
     if not down_arrow_set == None:
         down_arrow_set = [nx.from_graph6_bytes(bytes(subgraph_graph6_string[2:len(subgraph_graph6_string)-1], "utf-8").replace(b"\\\\",b"\\")) for subgraph_graph6_string in down_arrow_set]
-        with open(f"Graphs/{Graph_name}/Parts/DownArrowSet/{Graph_name}.DownArrowSet.Part.{ID}.g6", "wb") as output_file:
+        with open(f"Graphs/{Graph_name}/Parts/DownArrowSet/{Graph_name}.Down.Arrow.Set.Part.{ID}.g6", "wb") as output_file:
             [output_file.write(nx.to_graph6_bytes(subgraph, header=False)) for subgraph in down_arrow_set]
     return
 
 def _finish_down_arrow_set(Graph_name):
     down_arrow_set = None
     for file_name in os.listdir(f"Graphs/{Graph_name}/Parts/DownArrowSet"):
-        if file_name.startswith(f"{Graph_name}.DownArrowSet.Part."):
+        if file_name.startswith(f"{Graph_name}.Down.Arrow.Set.Part."):
             if down_arrow_set == None:
                 down_arrow_set = [nx.to_graph6_bytes(graph, header=False).strip() for graph in nx.read_graph6(f"Graphs/{Graph_name}/Parts/DownArrowSet/{file_name}")]
             else:
                 down_arrow_set = _intersection(down_arrow_set, [nx.to_graph6_bytes(graph, header=False).strip() for graph in nx.read_graph6(f"Graphs/{Graph_name}/Parts/DownArrowSet/{file_name}")])
     if not down_arrow_set == None:
         down_arrow_set = [nx.from_graph6_bytes(subgraph_graph6_string) for subgraph_graph6_string in down_arrow_set]
-        with open(f"Graphs/{Graph_name}/{Graph_name}.DownArrowSet.g6", "wb") as output_file:
+        with open(f"Graphs/{Graph_name}/{Graph_name}.Down.Arrow.Set.g6", "wb") as output_file:
             [output_file.write(nx.to_graph6_bytes(subgraph, header=False)) for subgraph in down_arrow_set]
     _make_ideals(Graph_name)
     return
 
 def _make_ideals(Graph_name):
     poset_graph = nx.empty_graph(create_using=nx.DiGraph)
-    down_arrow_set = list(nx.read_graph6(f"Graphs/{Graph_name}/{Graph_name}.DownArrowSet.g6"))
+    down_arrow_set = list(nx.read_graph6(f"Graphs/{Graph_name}/{Graph_name}.Down.Arrow.Set.g6"))
     for source_id,source in enumerate(down_arrow_set):
         for target_id,target in enumerate(down_arrow_set):
             if source_id == target_id:
@@ -251,7 +276,7 @@ def _make_ideals(Graph_name):
                 if nx.algorithms.isomorphism.GraphMatcher(target, source).subgraph_is_monomorphic():
                     poset_graph.add_edge(source_id,target_id)
     maximal_ideals = [down_arrow_set[maximal_node] for maximal_node in poset_graph.nodes if poset_graph.out_degree(maximal_node) == 0]
-    with open(f"Graphs/{Graph_name}/{Graph_name}.DownArrowIdeals.g6", "wb") as output_file:
+    with open(f"Graphs/{Graph_name}/{Graph_name}.Down.Arrow.Ideals.g6", "wb") as output_file:
         [output_file.write(nx.to_graph6_bytes(ideal, header=False)) for ideal in maximal_ideals]
-    _save_graph_list(maximal_ideals, f"Graphs/{Graph_name}/{Graph_name}.DownArrowIdeals")
+    _save_graph_list(maximal_ideals, f"Graphs/{Graph_name}/{Graph_name}.Down.Arrow.Ideals")
     return
