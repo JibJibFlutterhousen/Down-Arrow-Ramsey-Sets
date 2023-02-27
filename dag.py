@@ -17,8 +17,8 @@ def _allocate_work(iterator, worker_id, num_workers):
             continue
 
 def _send_workers(target_function, argument):
-    num_workers = 1
-    # num_workers = max(1, multiprocessing.cpu_count()-1)
+    # num_workers = 1
+    num_workers = max(1, multiprocessing.cpu_count()-1)
     workers = []
     for worker_id in range(num_workers):
         job = multiprocessing.Process(target=target_function, args=(argument, worker_id, num_workers))
@@ -31,7 +31,7 @@ def _send_workers(target_function, argument):
 def _read_graph6(path):
     for graph in nx.read_graph6(path):
         if type(graph) == type(nx.empty_graph()):
-            yield graph
+            yield graph 
         else:
             single_graph = nx.read_graph6(path)
             yield single_graph
@@ -64,11 +64,27 @@ def _make_graph_directory(graph_name):
     [os.mkdir(folder_name) for folder_name in folders_to_make if not os.path.exists(folder_name)]
     return
 
+def _draw_graph(graph_iter, path=None):
+    figure,axes = plt.subplots(figsize=(25,25), dpi=250)
+    graph=next(graph_iter)
+    axes.set_title(_graph6_bytes_to_file_name(nx.to_graph6_bytes(graph,header=False)))
+    nx.draw_kamada_kawai(graph, ax=axes, with_labels=True, node_color="black", edge_color="black", font_color="lightgrey")
+    plt.tight_layout()
+    if path == None:
+        plt.show()
+    else:
+        plt.savefig(f"{path}.png")
+        plt.close()
+    return
+
 def _draw_graphs(graph_iter, path=None):
     graph_iter,tmp = it.tee(graph_iter)
     num_graphs = 0
     for graph in tmp:
         num_graphs+=1
+    if num_graphs == 1:
+        _draw_graph(graph_iter, path)
+        return
     dimension = math.ceil(math.sqrt(num_graphs))
     figure,axes = plt.subplots(nrows=dimension, ncols=dimension, figsize=(25,25), dpi=250)
     graph_counter = 0
@@ -167,7 +183,7 @@ def _graph_complement(subgraph, host_graph_name):
     mapping = dict()
     for key,value in next(nx.algorithms.isomorphism.GraphMatcher(host_graph,subgraph).subgraph_monomorphisms_iter()).items():
         mapping[value]=key
-    nx.relabel_nodes(subgraph,mapping,copy=False)
+    subgraph = nx.relabel_nodes(subgraph,mapping,copy=True)
     blue_subgraph = host_graph.edge_subgraph(set(host_graph.edges())-set(subgraph.edges()))
     for subgraph_file_name in os.scandir(f"Graphs/{host_graph_name}/Subgraphs"):
         if nx.is_isomorphic(blue_subgraph, nx.from_graph6_bytes(_file_name_to_graph6_bytes(subgraph_file_name.name))):
@@ -221,9 +237,9 @@ def _make_colorings(graph_name):
     if not os.path.exists(f"Graphs/{graph_name}/Poset/{_graph6_bytes_to_file_name(nx.to_graph6_bytes(graph,header=False))}"):
         _make_poset(graph_name)
     if os.path.exists(f"Graphs/{graph_name}/Red-Blue Colorings/Part.1.g6"):
-        print(f"The unioning each of the red and blue subgrpahs of {graph_name} already exists")
+        print(f"The unioning each of the red and blue subgraphs of {graph_name} already exists")
     else:
-        print(f"Unioning each of the red and blue subgrpahs of {graph_name}")
+        print(f"Unioning each of the red and blue subgraphs of {graph_name}")
         _send_workers(_make_colorings_helper, graph_name)
     return
 
@@ -234,7 +250,7 @@ def _make_colorings_helper(graph_name, worker_id, num_workers):
             blue_subgraph = _graph_complement(red_subgraph,graph_name)
         except KeyError:
             with open(f"Graphs/{graph_name}/Logs.txt", "a") as output_file:
-                output_file.write(f"Re-check when the red subgraph is {nx.to_graph6_bytes(red_subgraph,header=False)}\n")
+                output_file.write(f"Re-check when the red subgraph is {nx.to_graph6_bytes(red_subgraph,header=False).strip()}\n")
             continue
         red_blue_union = _graph_iter_union_generator(_read_graph6(f"Graphs/{graph_name}/Poset/{_graph6_bytes_to_file_name(nx.to_graph6_bytes(red_subgraph,header=False))}"),_read_graph6(f"Graphs/{graph_name}/Poset/{_graph6_bytes_to_file_name(nx.to_graph6_bytes(blue_subgraph,header=False))}"))
         with open(f"Graphs/{graph_name}/Red-Blue colorings/{red_subgraph_file_name.name}", "wb") as output_file:
@@ -250,7 +266,7 @@ def _intersect_colorings(graph_name):
         _make_poset(graph_name)
     if not os.path.exists(f"Graphs/{graph_name}/Red-Blue Colorings/{_graph6_bytes_to_file_name(nx.to_graph6_bytes(graph,header=False))}"):
         _make_colorings(graph_name)
-    if os.path.exists(f"Graphs/{graph_name}/down-arrow ramsey set.g6"):
+    if os.path.exists(f"Graphs/{graph_name}/{graph_name} down-arrow ramsey set.g6"):
         print(f"The colorings of {graph_name} have already been processed")
     else:
         print(f"Processing the colorings of {graph_name} to generate the down-arrow Ramsey set")
@@ -260,57 +276,36 @@ def _intersect_colorings(graph_name):
                 continue
             else:
                 down_arrow_ramsey_set = _lines_in_both(down_arrow_ramsey_set,f"Graphs/{graph_name}/Red-Blue Colorings/{file_name.name}")
-        with open(f"Graphs/{graph_name}/down-arrow ramsey set.g6", "w+") as output_file:
+        with open(f"Graphs/{graph_name}/{graph_name} down-arrow ramsey set.g6", "w+") as output_file:
             for graph in down_arrow_ramsey_set:
                 output_file.seek(0)
                 if graph not in output_file:
                     output_file.write(graph)
     return
 
-
-# def _make_down_arrow_ramsey_set(graph_name):
-#     _make_graph_directory(graph_name)
-#     graph = _get_graph_from_name(graph_name)
-#     if not os.path.exists(f"Graphs/{graph_name}/Subgraphs/{_graph6_bytes_to_file_name(nx.to_graph6_bytes(graph,header=False))}"):
-#         _make_edge_induced_subgraphs(graph_name)
-#     if not os.path.exists(f"Graphs/{graph_name}/Poset/{_graph6_bytes_to_file_name(nx.to_graph6_bytes(graph,header=False))}"):
-#         _make_poset(graph_name)
-#     if os.path.exists(f"Graphs/{graph_name}/Down-Arrow Ramsey Set/Part.1.g6"):
-#         print(f"The Down-Arrow Ramsey set of {graph_name} has pieces remaining")
-#     else:
-#         print(f"Making the Down-Arrow Ramsey set of {graph_name}")
-#         _send_workers(_make_down_arrow_ramsey_set_helper, graph_name)
-#     if os.path.exists(f"Graphs/{graph_name}/down-arrow ramsey set.g6"):
-#         print(f"The Down-Arrow Ramsey set of {graph_name} already exists")
-#     else:
-#         print(f"\tZipping up the files that were left behind by the previous processes")
-#         down_arrow_ramsey_set = None
-#         for file in [file for file in os.listdir(f"Graphs/{graph_name}/Down-Arrow Ramsey Set/") if file.startswith("Part") and file.endswith(".g6")]:
-#             if down_arrow_ramsey_set == None:
-#                 down_arrow_ramsey_set = _read_graph6(f"Graphs/{graph_name}/Down-Arrow Ramsey Set/{file}")
-#             else:
-#                 down_arrow_ramsey_set = _graph_iter_intersection_generator(down_arrow_ramsey_set, _read_graph6(f"Graphs/{graph_name}/Down-Arrow Ramsey Set/{file}"))
-#         with open(f"Graphs/{graph_name}/down-arrow ramsey set.g6", "wb") as output_file:
-#             for graph in down_arrow_ramsey_set:
-#                 output_file.write(nx.to_graph6_bytes(graph,header=False))
-#     return
-
-# def _make_down_arrow_ramsey_set_helper(graph_name, worker_id, num_workers):
-#     down_arrow_ramsey_set = None
-#     for red_subgraph_file_name in _allocate_work(os.scandir(f"Graphs/{graph_name}/Subgraphs/"), worker_id, num_workers):
-#         red_subgraph = nx.from_graph6_bytes(_file_name_to_graph6_bytes(red_subgraph_file_name.name))
-#         try:
-#             blue_subgraph = _graph_complement(red_subgraph,graph_name)
-#         except KeyError:
-#             with open(f"Graphs/{graph_name}/Logs.txt", "a") as output_file:
-#                 output_file.write(f"Re-check when the red subgraph is {nx.to_graph6_bytes(red_subgraph,header=False)}\n")
-#             continue
-#         red_blue_union = _graph_iter_union_generator(_read_graph6(f"Graphs/{graph_name}/Poset/{_graph6_bytes_to_file_name(nx.to_graph6_bytes(red_subgraph,header=False))}"),_read_graph6(f"Graphs/{graph_name}/Poset/{_graph6_bytes_to_file_name(nx.to_graph6_bytes(blue_subgraph,header=False))}"))
-#         if down_arrow_ramsey_set == None:
-#             down_arrow_ramsey_set = red_blue_union
-#         else:
-#             down_arrow_ramsey_set = _graph_iter_intersection_generator(down_arrow_ramsey_set, red_blue_union)
-#     if not down_arrow_ramsey_set == None:
-#         with open(f"Graphs/{graph_name}/Down-Arrow Ramsey Set/Part.{worker_id}.g6", "wb") as output_file:
-#             for graph in down_arrow_ramsey_set:
-#                 output_file.write(nx.to_graph6_bytes(graph,header=False))
+def _make_down_arrow_ramsey_set_ideals(graph_name):
+    _make_graph_directory(graph_name)
+    graph = _get_graph_from_name(graph_name)
+    if not os.path.exists(f"Graphs/{graph_name}/Subgraphs/{_graph6_bytes_to_file_name(nx.to_graph6_bytes(graph,header=False))}"):
+        _make_edge_induced_subgraphs(graph_name)
+    if not os.path.exists(f"Graphs/{graph_name}/Poset/{_graph6_bytes_to_file_name(nx.to_graph6_bytes(graph,header=False))}"):
+        _make_poset(graph_name)
+    if not os.path.exists(f"Graphs/{graph_name}/Red-Blue Colorings/{_graph6_bytes_to_file_name(nx.to_graph6_bytes(graph,header=False))}"):
+        _make_colorings(graph_name)
+    if not os.path.exists(f"Graphs/{graph_name}/{graph_name} down-arrow ramsey set.g6"):
+        _intersect_colorings(graph_name)
+    if os.path.exists(f"Graphs/{graph_name}/{graph_name} down-arrow ramsey set ideals.g6"):
+        print(f"The ideals of the down-arrow Ramsey set of {graph_name} have already been made")
+    else:
+        poset_graph = nx.DiGraph()
+        for graph in _read_graph6(f"Graphs/{graph_name}/{graph_name} down-arrow ramsey set.g6"):
+            node_graph6_string = _graph6_bytes_to_file_name(nx.to_graph6_bytes(graph,header=False)).split(".")[0]
+            for subgraph in _read_graph6(f"Graphs/{graph_name}/Poset/{node_graph6_string}.g6"):
+                subgraph_graph6_string = _graph6_bytes_to_file_name(nx.to_graph6_bytes(subgraph,header=False)).split(".")[0]
+                if node_graph6_string != subgraph_graph6_string:
+                    poset_graph.add_edge(subgraph_graph6_string,node_graph6_string)
+        with open(f"Graphs/{graph_name}/{graph_name} down-arrow ramsey set ideals.g6", "wb") as output_file:
+            for node in poset_graph.nodes():
+                if poset_graph.out_degree(node)==0:
+                    output_file.write(_file_name_to_graph6_bytes(f"{node}.g6"))
+        _draw_graphs(_read_graph6(f"Graphs/{graph_name}/{graph_name} down-arrow ramsey set ideals.g6"),f"Graphs/{graph_name}/{graph_name} down-arrow ramsey set ideals")
