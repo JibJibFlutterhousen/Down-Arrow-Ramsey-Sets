@@ -8,8 +8,14 @@ import os
 import tempfile
 import math
 
+def bfTree():
+    return nx.parse_adjlist(['1 2 3 4', '2 5 6', '3 7 8', '4 9 10'])
+
 def ZimGraph():
     return nx.parse_adjlist(['1 2 5', '2 3 6', '3 7', '4 5', '5 6 9', '6 7 9', '7 8 9', '9 10 11', '10 11'])
+
+def Barbell():
+    return nx.parse_adjlist(['0 1 2', '1 2', '2 3', '3 4 5', '4 5'])
 
 def _allocate_work(iterator, worker_id, num_workers):
     for job_number,job in enumerate(iterator):
@@ -40,11 +46,17 @@ def _read_graph6(path):
             break
 
 def _get_graph_from_name(graph_name):
-    if graph_name == "Petersen":
-        return nx.petersen_graph()
-    if graph_name == "ZimGraph":
+    if type(graph_name) == type(nx.empty_graph()):
+        return graph_name
+    elif graph_name.endswith(".g6"):
+        return nx.from_graph6_bytes(_file_name_to_graph6_bytes(graph_name))
+    elif graph_name == "Barioli-Fallat Tree":
+        return bfTree()
+    elif graph_name == "Barbell 3-0":
+        return Barbell()
+    elif graph_name == "ZimGraph":
         return ZimGraph()
-    if "K_" in graph_name:
+    elif "K_" in graph_name:
         if "," in graph_name:
             n,m=graph_name.split(".",1)[0].split("K_",1)[1].split(",")
             n=int(n)
@@ -112,7 +124,6 @@ def _draw_graphs(graph_iter, path=None):
 def _file_name_to_graph6_bytes(file_name):
     """
         Ok, so hold onto your butts for this one, because windows caused a bug here.
-
         First, you cannot use the symbols "?", "\", or "|" in a windows file name but they can be encoded as graph6 byte strings... so we replace them with "1", "2", and "3" respectively.
         Next, windows cannot have files with the same letters, but different cases, in the same directory (i.e. "Bw.g6" and "BW.g6") but this CAN happen for non-isomorphic graphs. So we choose to make everything lowercase.
         If an upper-case letter is replaced with a lower-case by this function, it will append a "+" symbol in front so it can be decoded later.
@@ -122,7 +133,6 @@ def _file_name_to_graph6_bytes(file_name):
 def _graph6_bytes_to_file_name(graph6_bytes):
     """
         Ok, so hold onto your butts for this one, because windows caused a bug here.
-
         First, you cannot use the symbols "?", "\", or "|" in a windows file name but they can be encoded as graph6 byte strings... so we replace them with "1", "2", and "3" respectively.
         Next, windows cannot have files with the same letters, but different cases, in the same directory (i.e. "Bw.g6" and "BW.g6") but this CAN happen for non-isomorphic graphs. So we choose to make everything lowercase.
         If an upper-case letter is replaced with a lower-case by this function, it will append a "+" symbol in front so it can be decoded later.
@@ -155,12 +165,9 @@ def _graph_complement(subgraph, host_graph_name):
     host_graph = _get_graph_from_name(host_graph_name)
     """
         This function should be much simpler, but there are some issues with the way that complete bipartite graphs were working that prevented simplicity.
-
         If a human were doing complementation inside of a host graph (by which I mean automatically ignoring isolated vertices), we would find a copy of the original graph in the host graph, and just remove those edges.
         Well, this is what the algorithm has to do as well, so we have to invoke SOMETHING NOT IN THE DOCUMENTATION BUT ONLY IN THE SOURCE OF NETWORKX.... subgraph_monomorphisms_iter() to find an edge-induced subgraph.
-
         Once we find this edge-induced subgraph, we need to relabel our nodes on the input subgraph to match that matching, so that we can properly remove the edges.
-
         I caught this annoying bug when trying to remove an edge from K_2,2.....
     """
     mapping = dict()
@@ -319,7 +326,11 @@ def _intersect_colorings_helper(graph_name, worker_id, num_workers):
 #                     output_file.write(graph)
 #     return
 
-def _make_down_arrow_ramsey_set_ideals(graph_name):
+def make_down_arrow_ramsey_set_ideals(graph_name):
+
+    if type(graph_name) == type(nx.null_graph()):
+        graph_name = _graph6_bytes_to_file_name(nx.to_graph6_bytes(graph_name))
+
     _make_graph_directory(graph_name)
     graph = _get_graph_from_name(graph_name)
     if not os.path.exists(f"Graphs/{graph_name}/Subgraphs/{_graph6_bytes_to_file_name(nx.to_graph6_bytes(graph,header=False))}"):
