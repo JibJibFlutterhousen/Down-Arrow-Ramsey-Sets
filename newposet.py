@@ -51,9 +51,9 @@ def _distinct_subgraph_generator_list(Graph):
 def needs_edge(Poset_graph, Edge):
     source_node, target_node = Edge
     if (source_node, target_node) in Poset_graph.edges():
-        False, (None, None)
+        return False, (None, None)
     elif (target_node, source_node) in Poset_graph.edges():
-        False, (None, None)
+        return False, (None, None)
     else:
         source_graph = nx.from_graph6_bytes(Poset_graph.nodes[source_node]["graph6_bytes"])
         target_graph = nx.from_graph6_bytes(Poset_graph.nodes[target_node]["graph6_bytes"])
@@ -61,7 +61,8 @@ def needs_edge(Poset_graph, Edge):
             return True, (source_node, target_node)
         elif nx.algorithms.isomorphism.GraphMatcher(source_graph, target_graph).subgraph_is_monomorphic():
             return True, (target_node, source_node)
-    return False, (None, None)
+        else:
+            return False, (None, None)
 
 def _seed_poset(Host_graph):
     print("Determining the unique subgraphs")
